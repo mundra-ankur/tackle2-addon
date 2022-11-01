@@ -7,20 +7,18 @@ import (
 	"github.com/konveyor/tackle2-addon/nas"
 	"github.com/konveyor/tackle2-addon/ssh"
 	"github.com/konveyor/tackle2-hub/api"
-	"io/ioutil"
+	"io"
 	urllib "net/url"
 	"os"
 	pathlib "path"
 	"strings"
 )
 
-//
 // Subversion repository.
 type Subversion struct {
 	SCM
 }
 
-//
 // Validate settings.
 func (r *Subversion) Validate() (err error) {
 	u, err := urllib.Parse(r.Application.Repository.URL)
@@ -44,11 +42,9 @@ func (r *Subversion) Validate() (err error) {
 	return
 }
 
-//
 // Fetch clones the repository.
 func (r *Subversion) Fetch() (err error) {
 	url := r.URL()
-	_ = nas.RmDir(r.Path)
 	addon.Activity("[SVN] Cloning: %s", url.String())
 	id, found, err := addon.Application.FindIdentity(r.Application.ID, "source")
 	if err != nil {
@@ -75,6 +71,13 @@ func (r *Subversion) Fetch() (err error) {
 	if err != nil {
 		return
 	}
+	return r.Checkout(r.Application.Repository.Branch)
+}
+
+// Checkout Checkouts the repository.
+func (r *Subversion) Checkout(branch string) (err error) {
+	url := r.URL()
+	_ = nas.RmDir(r.Path)
 	insecure, err := addon.Setting.Bool("svn.insecure.enabled")
 	if err != nil {
 		return
@@ -84,64 +87,76 @@ func (r *Subversion) Fetch() (err error) {
 	if insecure {
 		cmd.Options.Add("--trust-server-cert")
 	}
+
+	if branch != "" {
+		url.Path = pathlib.Join(url.RawPath, "branches", branch)
+	}
 	cmd.Options.Add("checkout", url.String(), r.Path)
-	err = cmd.Run()
-	return
+	return cmd.Run()
+}
+
+func (r *Subversion) Branch(name string) error {
+	err := r.Checkout(name)
+	if err != nil {
+		err = r.CreateBranch(name)
+	}
+	return err
 }
 
 // CreateBranch creates a branch with the given name
 func (r *Subversion) CreateBranch(name string) (err error) {
-	return fmt.Errorf("Not yet implemented")
-	// url := r.URL()
-	// insecure, err := addon.Setting.Bool("svn.insecure.enabled")
-	// if err != nil {
-	// 	return
-	// }
-	//
-	// cmd := command.Command{Path: "/usr/bin/svn"}
-	// cmd.Options.Add("--non-interactive")
-	// if insecure {
-	// 	cmd.Options.Add("--trust-server-cert")
-	// }
-	// cmd.Options.Add("copy", url.String(), r.Path)
-	// err = cmd.Run()
-	// return
-}
+	url := *r.URL()
+	cmd := command.Command{Path: "/usr/bin/svn"}
+	cmd.Options.Add("--non-interactive")
 
-// UseBranch uses a branch with name
-func (r *Subversion) UseBranch(name string) (err error) {
-	return fmt.Errorf("Not yet implemented")
+	branchUrl := url
+	branchUrl.Path = pathlib.Join(branchUrl.RawPath, "branches", name)
+
+	cmd.Options.Add("copy", url.String(), branchUrl.String(), "-m", "Creating branch "+name)
+	err = cmd.Run()
+	if err != nil {
+		return err
+	}
+	return r.Checkout(name)
 }
 
 // AddFiles adds files to staging area
 func (r *Subversion) AddFiles(files []string) (err error) {
-	return fmt.Errorf("Not yet implemented")
+	cmd := command.Command{Path: "/usr/bin/svn"}
+	cmd.Dir = r.Path
+	cmd.Options.Add("add")
+	cmd.Options.Add("--force", files...)
+	err = cmd.Run()
+	return
 }
 
-// Commit records changes to the repo
-func (r *Subversion) Commit(msg string) (err error) {
-	return fmt.Errorf("Not yet implemented")
+// Commit records changes to the repo and push to the server
+func (r *Subversion) Commit(files []string, msg string) (err error) {
+	err = r.AddFiles(files)
+	if err != nil {
+		return
+	}
+	cmd := command.Command{Path: "/usr/bin/svn"}
+	cmd.Dir = r.Path
+	cmd.Options.Add("commit", "-m", msg)
+	err = cmd.Run()
+	return
 }
 
-// Push changes to server
-func (r *Subversion) Push() (err error) {
-	return fmt.Errorf("Not yet implemented")
-}
-
-//
 // URL returns the parsed URL.
 func (r *Subversion) URL() (u *urllib.URL) {
 	repository := r.Application.Repository
 	u, _ = urllib.Parse(repository.URL)
+	u.RawPath = u.Path
 	branch := r.Application.Repository.Branch
 	if branch == "" {
-		branch = "trunk"
+		u.Path = pathlib.Join(u.Path, "trunk")
+	} else {
+		u.Path = pathlib.Join(u.Path, "branches", branch)
 	}
-	u.Path += "/" + branch
 	return
 }
 
-//
 // writeConfig writes config file.
 func (r *Subversion) writeConfig() (err error) {
 	path := pathlib.Join(
@@ -180,12 +195,12 @@ func (r *Subversion) writeConfig() (err error) {
 	return
 }
 
-//
 // writePassword injects the password into: auth/svn.simple.
 func (r *Subversion) writePassword(id *api.Identity) (err error) {
 	if id.User == "" || id.Password == "" {
 		return
 	}
+
 	cmd := command.Command{Path: "/usr/bin/svn"}
 	cmd.Options.Add("--non-interactive")
 	cmd.Options.Add("--username")
@@ -202,6 +217,7 @@ func (r *Subversion) writePassword(id *api.Identity) (err error) {
 		".subversion",
 		"auth",
 		"svn.simple")
+
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		err = liberr.Wrap(
@@ -210,6 +226,7 @@ func (r *Subversion) writePassword(id *api.Identity) (err error) {
 			dir)
 		return
 	}
+
 	path := pathlib.Join(dir, files[0].Name())
 	f, err := os.OpenFile(path, os.O_RDWR, 0644)
 	if err != nil {
@@ -222,7 +239,7 @@ func (r *Subversion) writePassword(id *api.Identity) (err error) {
 	defer func() {
 		_ = f.Close()
 	}()
-	content, err := ioutil.ReadAll(f)
+	content, err := io.ReadAll(f)
 	if err != nil {
 		err = liberr.Wrap(
 			err,
@@ -263,7 +280,6 @@ func (r *Subversion) writePassword(id *api.Identity) (err error) {
 	return
 }
 
-//
 // proxy builds the proxy.
 func (r *Subversion) proxy() (proxy string, err error) {
 	kind := ""

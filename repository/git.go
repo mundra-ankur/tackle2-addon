@@ -13,13 +13,11 @@ import (
 	"strings"
 )
 
-//
 // Git repository.
 type Git struct {
 	SCM
 }
 
-//
 // Validate settings.
 func (r *Git) Validate() (err error) {
 	u := GitURL{}
@@ -43,7 +41,6 @@ func (r *Git) Validate() (err error) {
 	return
 }
 
-//
 // Fetch clones the repository.
 func (r *Git) Fetch() (err error) {
 	url := r.URL()
@@ -84,19 +81,18 @@ func (r *Git) Fetch() (err error) {
 	return
 }
 
-// CreateBranch creates a branch with the given name
-func (r *Git) CreateBranch(name string) (err error) {
-	cmd := command.Command{Path: "/usr/bin/git"}
-	cmd.Dir = r.Path
-	cmd.Options.Add("branch", name)
-	return cmd.Run()
-}
-
-// UseBranch uses a branch with name
-func (r *Git) UseBranch(name string) (err error) {
+// Branch creates a branch with the given name if not exist and switch to it
+func (r *Git) Branch(name string) (err error) {
 	cmd := command.Command{Path: "/usr/bin/git"}
 	cmd.Dir = r.Path
 	cmd.Options.Add("checkout", name)
+	err = cmd.Run()
+	if err != nil {
+		cmd = command.Command{Path: "/usr/bin/git"}
+		cmd.Dir = r.Path
+		cmd.Options.Add("checkout", "-b", name)
+	}
+	r.Application.Repository.Branch = name
 	return cmd.Run()
 }
 
@@ -108,24 +104,31 @@ func (r *Git) AddFiles(files []string) (err error) {
 	return cmd.Run()
 }
 
-// Commit records changes to the repo
-func (r *Git) Commit(msg string) (err error) {
+// Commit files and push to remote
+func (r *Git) Commit(files []string, msg string) (err error) {
+	err = r.AddFiles(files)
+	if err != nil {
+		return err
+	}
 	cmd := command.Command{Path: "/usr/bin/git"}
 	cmd.Dir = r.Path
 	cmd.Options.Add("commit")
 	cmd.Options.Add("--message", msg)
-	return cmd.Run()
+	err = cmd.Run()
+	if err != nil {
+		return err
+	}
+	return r.Push()
 }
 
 // Push changes to server
 func (r *Git) Push() (err error) {
 	cmd := command.Command{Path: "/usr/bin/git"}
 	cmd.Dir = r.Path
-	cmd.Options.Add("push")
+	cmd.Options.Add("push", "--set-upstream", "origin", r.Application.Repository.Branch)
 	return cmd.Run()
 }
 
-//
 // URL returns the parsed URL.
 func (r *Git) URL() (u GitURL) {
 	u = GitURL{}
@@ -133,7 +136,6 @@ func (r *Git) URL() (u GitURL) {
 	return
 }
 
-//
 // writeConfig writes config file.
 func (r *Git) writeConfig() (err error) {
 	path := pathlib.Join(HomeDir, ".gitconfig")
@@ -179,7 +181,6 @@ func (r *Git) writeConfig() (err error) {
 	return
 }
 
-//
 // writeCreds writes credentials (store) file.
 func (r *Git) writeCreds(id *api.Identity) (err error) {
 	if id.User == "" || id.Password == "" {
@@ -228,7 +229,6 @@ func (r *Git) writeCreds(id *api.Identity) (err error) {
 	return
 }
 
-//
 // proxy builds the proxy.
 func (r *Git) proxy() (proxy string, err error) {
 	kind := ""
@@ -280,7 +280,6 @@ func (r *Git) proxy() (proxy string, err error) {
 	return
 }
 
-//
 // checkout ref.
 func (r *Git) checkout() (err error) {
 	branch := r.Application.Repository.Branch
@@ -298,7 +297,6 @@ func (r *Git) checkout() (err error) {
 	return
 }
 
-//
 // GitURL git clone URL.
 type GitURL struct {
 	Raw    string
@@ -307,7 +305,6 @@ type GitURL struct {
 	Path   string
 }
 
-//
 // With populates the URL.
 func (r *GitURL) With(u string) (err error) {
 	r.Raw = u
@@ -335,7 +332,6 @@ func (r *GitURL) With(u string) (err error) {
 	return
 }
 
-//
 // String representation.
 func (r *GitURL) String() string {
 	return r.Raw
