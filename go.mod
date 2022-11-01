@@ -1,4 +1,4 @@
-module github.com/konveyor/tackle2-addon
+module github.com/mundra-ankur/tackle2-addon
 
 go 1.16
 
