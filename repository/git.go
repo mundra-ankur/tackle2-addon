@@ -96,8 +96,8 @@ func (r *Git) Branch(name string) (err error) {
 	return cmd.Run()
 }
 
-// AddFiles adds files to staging area
-func (r *Git) AddFiles(files []string) (err error) {
+// addFiles adds files to staging area
+func (r *Git) addFiles(files []string) (err error) {
 	cmd := command.Command{Path: "/usr/bin/git"}
 	cmd.Dir = r.Path
 	cmd.Options.Add("add", files...)
@@ -106,7 +106,7 @@ func (r *Git) AddFiles(files []string) (err error) {
 
 // Commit files and push to remote
 func (r *Git) Commit(files []string, msg string) (err error) {
-	err = r.AddFiles(files)
+	err = r.addFiles(files)
 	if err != nil {
 		return err
 	}
@@ -118,11 +118,11 @@ func (r *Git) Commit(files []string, msg string) (err error) {
 	if err != nil {
 		return err
 	}
-	return r.Push()
+	return r.push()
 }
 
-// Push changes to server
-func (r *Git) Push() (err error) {
+// push changes to server
+func (r *Git) push() (err error) {
 	cmd := command.Command{Path: "/usr/bin/git"}
 	cmd.Dir = r.Path
 	cmd.Options.Add("push", "--set-upstream", "origin", r.Application.Repository.Branch)

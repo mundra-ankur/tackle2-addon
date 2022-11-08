@@ -71,11 +71,11 @@ func (r *Subversion) Fetch() (err error) {
 	if err != nil {
 		return
 	}
-	return r.Checkout(r.Application.Repository.Branch)
+	return r.checkout(r.Application.Repository.Branch)
 }
 
-// Checkout Checkouts the repository.
-func (r *Subversion) Checkout(branch string) (err error) {
+// checkout Checkouts the repository.
+func (r *Subversion) checkout(branch string) (err error) {
 	url := r.URL()
 	_ = nas.RmDir(r.Path)
 	insecure, err := addon.Setting.Bool("svn.insecure.enabled")
@@ -96,15 +96,15 @@ func (r *Subversion) Checkout(branch string) (err error) {
 }
 
 func (r *Subversion) Branch(name string) error {
-	err := r.Checkout(name)
+	err := r.checkout(name)
 	if err != nil {
-		err = r.CreateBranch(name)
+		err = r.createBranch(name)
 	}
 	return err
 }
 
-// CreateBranch creates a branch with the given name
-func (r *Subversion) CreateBranch(name string) (err error) {
+// createBranch creates a branch with the given name
+func (r *Subversion) createBranch(name string) (err error) {
 	url := *r.URL()
 	cmd := command.Command{Path: "/usr/bin/svn"}
 	cmd.Options.Add("--non-interactive")
@@ -117,11 +117,11 @@ func (r *Subversion) CreateBranch(name string) (err error) {
 	if err != nil {
 		return err
 	}
-	return r.Checkout(name)
+	return r.checkout(name)
 }
 
-// AddFiles adds files to staging area
-func (r *Subversion) AddFiles(files []string) (err error) {
+// addFiles adds files to staging area
+func (r *Subversion) addFiles(files []string) (err error) {
 	cmd := command.Command{Path: "/usr/bin/svn"}
 	cmd.Dir = r.Path
 	cmd.Options.Add("add")
@@ -132,7 +132,7 @@ func (r *Subversion) AddFiles(files []string) (err error) {
 
 // Commit records changes to the repo and push to the server
 func (r *Subversion) Commit(files []string, msg string) (err error) {
-	err = r.AddFiles(files)
+	err = r.addFiles(files)
 	if err != nil {
 		return
 	}
